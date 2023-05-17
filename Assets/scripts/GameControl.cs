@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.ComponentModel.Design;
 using System.IO;
 using System.Linq;
 using System.Xml.Linq;
@@ -11,17 +12,22 @@ public class GameControl : MonoBehaviour
 {
 
     public  GameControl Instance { get; private set; }
+    [Header("information")]
+    public int level = 1;
+    public int step = 90;
 
     public int[,] map = new int[20, 20];  // 存放每个位置信息，0表示正常路径，-1表示障碍物，2表示宝箱
     public int playerPosX = 0;  // 玩家当前位置横坐标
     public int playerPosY = 0;  // 玩家当前位置纵坐标
     public Vector2Int endPos;  // 地图终点坐标
-    private PlayerControl playerControl;
+
     // 障碍物对象
     public GameObject barrierPrefab;
-    //终点
+    //障碍物数量
+    private int numObstacles = 20;
+    //终点对象
     public GameObject EndPrefab;
-    //
+    //方块数字权重显示对象
     public GameObject textPrefab;
     // 地图大小
     private const int MapWidth = 15;
@@ -29,21 +35,25 @@ public class GameControl : MonoBehaviour
     // 终点位置
     public int endPosX = MapWidth - 1;
     public int endPosY = MapHeight - 1;
-    public int startPosX = 0;  // 玩家当前位置横坐标
+    public int startPosX = 0;  // 玩家初始位置横坐标
     public int startPosY = 0;
     //可视化路径
     public List<Vector2Int> resultpath;
-    // 提示路径
+
+    // 用tipPrefab对象显示提示路径
     public GameObject tipPrefab;
 
-    private bool Search_DsjIsOn;
-    private bool Search_BFSIsOn;
-    private bool Search_AstarIsOn;
-    private GameObject[,] BlockPrefab;//放置文字块
+    private bool Search_IsOn;
+    private bool tips_IsOn;
 
-    [Header("A_Star")]
-    public Dictionary<Vector2Int, int> f;
-    public Dictionary<Vector2Int, int> g;
+    private bool MapFalse;//判断障碍物是否包围了终点
+    public GameObject[,] BlockPrefab;//记录文字块
+    private GameObject[] barrierPrefabs;//记录障碍物
+    private GameObject[] tipPrefabs;//记录障碍物
+
+    [Header("AI-information")]
+    public float moveInterval ; // 移动间隔时间
+    public int currentIndex; // 当前路径点的索引
 
     private void Awake()
     {
@@ -63,17 +73,83 @@ public class GameControl : MonoBehaviour
         GameInit();
         // ...
 
-        
-        
+    }
+    void Update()
+    {
+        DataUpdate();//更新数据信息
+        Checkout();//更新关卡信息、判断游戏是否结束
+    }
+
+    private void DataUpdate()
+    {
+        Text textComponent = GameObject.FindGameObjectWithTag("step").GetComponent<Text>(); ;
+        if (textComponent != null)
+        {
+            
+            textComponent.text = step.ToString();
+        }
+
+        Text textComponent2 = GameObject.FindGameObjectWithTag("Level").GetComponent<Text>(); ;
+        if (textComponent2 != null)
+        {
+            textComponent2.text = string.Format("{0:00}", level);
+        }
+    }
+
+    private void Checkout()
+    {
+        if(playerPosX== endPosX&& playerPosY == endPosY)//到达终点，关卡加一，步数重置
+        {
+            level += 1;
+            step = 80;
+            if(numObstacles<30)
+            numObstacles++;
+            CleanData();//清除本回合所有对象下面重新创建
+            GameInit();
+        }
+
+        if (step <= 0)//能量不足，游戏失败
+        {
+            level = 1;
+            step = 80;
+            CleanData();//清除本回合所有对象下面重新创建
+            GameInit();
+        }
+    }
+
+    private void CleanData()
+    {
+        for (int i = 0; i < BlockPrefab.GetLength(0); i++)
+        {
+            for (int j = 0; j < BlockPrefab.GetLength(1); j++)
+            {
+                Destroy(BlockPrefab[i, j]); // 删除数组元素中的对象 即文字方块
+            }
+        }
+        for (int i = 0; i < barrierPrefabs.GetLength(0); i++)
+        {
+            Destroy(barrierPrefabs[i]); // 删除数组元素中的对象  即障碍物
+        }
+        for (int i = 0; i < tipPrefabs.GetLength(0); i++)
+        {
+            Destroy(tipPrefabs[i]); // 删除tipPrefabs数组元素中的对象 即绿色方块
+        }
+        StopAllCoroutines();
+        GameObject obj = GameObject.FindGameObjectWithTag("EndPrefab");
+        Destroy(obj);
     }
 
     private void ShowPath(List<Vector2Int> resultpath)
     {
         // 循环遍历路径上的每一个坐标
-        for (int i = 0; i < resultpath.Count; i++)
+        for (int i = 0; i < resultpath.Count-1; i++)
         {
             // 实例化一个预设体生成提示对象
             GameObject tip = Instantiate(tipPrefab, transform.position, Quaternion.identity);
+
+            //用tipPrefabs数组记录tip，便于clean删除它们
+            tipPrefabs[i]= tip;
+
             // 设置提示对象的位置
             tip.transform.position = new Vector3(resultpath[i].x, resultpath[i].y, -2);
         }
@@ -82,12 +158,13 @@ public class GameControl : MonoBehaviour
     private void GameInit()
     {
         BlockPrefab = new GameObject[20, 20];
+        barrierPrefabs = new GameObject[30];
+        tipPrefabs = new GameObject[30];
         // 初始化地图数据
         for (int i = 0; i < MapWidth; i++)
         {
             for (int j = 0; j < MapHeight; j++)
             {
-                
                 //设置地图方块及方块内容,随机1-9
                 GameObject Prefab = Instantiate(textPrefab, new Vector3(i, j, -2), Quaternion.identity);
                 BlockPrefab[i,j]= Prefab;//将文字块对象放入对应位置，以便通过下标访问
@@ -105,14 +182,29 @@ public class GameControl : MonoBehaviour
         // 生成起点和终点
         startPosX = UnityEngine.Random.Range(0, 3);
         startPosY = UnityEngine.Random.Range(0, 3);
+
         endPosX = UnityEngine.Random.Range(7, MapWidth);
         endPosY = UnityEngine.Random.Range(7, MapHeight);
         //设置终点对象坐标
         GameObject endObj = Instantiate(EndPrefab, new Vector3(endPosX, endPosY, -2), Quaternion.identity);
         endObj.transform.SetParent(transform);
 
+        CreateMap();//生成障碍物
+        while (MapFalse)
+        {
+            MapFalse=false;
+
+            CreateMap();
+        }
+
+        // 初始化玩家位置
+        playerPosX = startPosX;
+        playerPosY = startPosY;
+    }
+
+    private bool CreateMap()
+    {
         // 生成障碍物
-        int numObstacles = 20;
         int curObstacle = 0;
         while (curObstacle < numObstacles)
         {
@@ -136,14 +228,17 @@ public class GameControl : MonoBehaviour
             // 生成障碍物
             map[posX, posY] = -1;
             GameObject barrierObj = Instantiate(barrierPrefab, new Vector3(posX, posY, -2), Quaternion.identity);
+            //用一维数组barrierPrefabs存储所有障碍物
+            barrierPrefabs[curObstacle] = barrierObj;
+
             barrierObj.transform.SetParent(transform);
 
             curObstacle++;
         }
+        ChangeMap();
+        resultpath = Search_BFS(playerPosX, playerPosY, endPosX, endPosY);
 
-        // 初始化玩家位置
-        playerPosX = startPosX;
-        playerPosY = startPosY;
+        return true;
     }
 
     public List<Vector2Int> Search_Dijkstra(int startPosX, int startPosY, int endPosX, int endPosY)
@@ -201,7 +296,7 @@ public class GameControl : MonoBehaviour
 
                 if (tentativeDistance < distances[neighbor])
                 {
-                    distances[neighbor] = tentativeDistance;
+                    distances[neighbor] = tentativeDistance;//更新节点信息
                     predecessors[neighbor] = current;
                 }
             }
@@ -310,8 +405,6 @@ public class GameControl : MonoBehaviour
             while (current != start)
             {
                 path.Add(current);
-                
-
                 sum += map[current.x, current.y];//把所需步骤加起来
                 Text textComponent = GameObject.FindGameObjectWithTag("NeedStep").GetComponent<Text>(); ;
                 if (textComponent != null)
@@ -325,7 +418,10 @@ public class GameControl : MonoBehaviour
             path.Add(start);
             path.Reverse();
         }
-
+        else
+        {
+            MapFalse=true;
+        }
         return path;
     }
 
@@ -342,8 +438,8 @@ public class GameControl : MonoBehaviour
         // 存储每个点的前驱节点，即到该点的最短路径上，该点的前一个节点
         Dictionary<Vector2Int, Vector2Int> Apredecessors = new Dictionary<Vector2Int, Vector2Int>();
         // 初始化 f 和 g 字典，用于存储节点的启发函数值和实际代价
-        f = new Dictionary<Vector2Int, int>();
-        g = new Dictionary<Vector2Int, int>();
+        Dictionary<Vector2Int, int> f = new Dictionary<Vector2Int, int>();
+        Dictionary<Vector2Int, int> g = new Dictionary<Vector2Int, int>();
 
         // 设置起点的代价和启发函数值
         g[start] = 0;
@@ -379,7 +475,7 @@ public class GameControl : MonoBehaviour
                 // 如果相邻节点已经在 closed 列表中，跳过
                 if (closed.Contains(neighbor))
                     continue;
-                print("come in");
+
                 // 计算从起点到相邻节点的代价
                 int tentativeG = g[current] + GetDistance(current, neighbor);
 
@@ -400,13 +496,6 @@ public class GameControl : MonoBehaviour
                 }
             }
         }
-        //Vector2Int currentPos = end;
-
-        //while (currentPos != start)
-        //{
-        //    path.Add(currentPos);
-        //    currentPos = Apredecessors[currentPos];
-        //}
 
         path.Reverse();
         return path;
@@ -423,12 +512,13 @@ public class GameControl : MonoBehaviour
     public void OpenSearch_Dijkstra()
 
     {
-        
-        Search_DsjIsOn = !Search_DsjIsOn;
-        if (Search_DsjIsOn)
+
+        Search_IsOn = !Search_IsOn;
+        if (Search_IsOn)
         {
+
             //可视化路径
-            resultpath = Search_Dijkstra(startPosX, startPosY, endPosX, endPosY);
+            resultpath = Search_Dijkstra(playerPosX, playerPosY, endPosX, endPosY);
             ShowPath(resultpath);
         }
         else
@@ -450,11 +540,11 @@ public class GameControl : MonoBehaviour
 
     {
 
-        Search_BFSIsOn = !Search_BFSIsOn;
-        if (Search_BFSIsOn)
+        Search_IsOn = !Search_IsOn;
+        if (Search_IsOn)
         {
             //可视化路径
-            resultpath = Search_BFS(startPosX, startPosY, endPosX, endPosY);
+            resultpath = Search_BFS(playerPosX, playerPosY, endPosX, endPosY);
             ShowPath(resultpath);
         }
         else
@@ -474,12 +564,12 @@ public class GameControl : MonoBehaviour
 
     {
 
-        Search_AstarIsOn = !Search_AstarIsOn;
-        if (Search_AstarIsOn)
+        Search_IsOn = !Search_IsOn;
+        if (Search_IsOn)
         {
             //可视化路径
             print("scuees");
-            resultpath = Search_Astar(startPosX, startPosY, endPosX, endPosY);
+            resultpath = Search_Astar(playerPosX, playerPosY, endPosX, endPosY);
             ShowPath(resultpath);
         }
         else
@@ -505,8 +595,8 @@ public class GameControl : MonoBehaviour
             //局部变量 prabs
             //将BFS得到的路径全部权值加大
             GameObject prabs = BlockPrefab[resultpath[i].x, resultpath[i].y];
-            int x = UnityEngine.Random.Range(10, 20);
-            Text textComponent = prabs.transform.Find("Canvas").Find("Text").GetComponent<Text>(); ;
+            int x = UnityEngine.Random.Range(3, 20);
+            Text textComponent = prabs.transform.Find("Canvas").Find("Text").GetComponent<Text>(); 
             if (textComponent != null)
             {
                 textComponent.text = x.ToString();
@@ -517,6 +607,43 @@ public class GameControl : MonoBehaviour
 
     }
 
+    public void AI_go()//将BFS得到的路径全部权值加大
+    {
+        Slider moveSpeedSlider = GameObject.FindGameObjectWithTag("MoveSpeed").GetComponent<Slider>();
+        // 获取Slider的Value值
+        moveInterval = moveSpeedSlider.value*2f+0.2f;
+
+        currentIndex = 0;
+        resultpath = Search_Dijkstra(playerPosX, playerPosY, endPosX, endPosY);
+        ShowPath(resultpath);
+        StartCoroutine(MovePlayer());
+        
+    }
+    IEnumerator MovePlayer()
+    {
+        while (currentIndex < resultpath.Count)
+        {
+            Vector2Int targetPosition = resultpath[currentIndex];
+            if(playerPosX< targetPosition.x)
+            {
+                MoveToRight();
+            }
+            else if(playerPosY< targetPosition.y)
+            {
+                MoveToUp();
+            }
+            else if (playerPosY > targetPosition.y)
+            {
+                MoveToDown();
+            }
+            else if (playerPosX > targetPosition.x)
+            {
+                MoveToLeft();
+            }
+            currentIndex++; // 前进到下一个路径点
+            yield return new WaitForSeconds(moveInterval);
+        }
+    }
 
 
 
@@ -525,6 +652,7 @@ public class GameControl : MonoBehaviour
         if (playerPosX > 0 && map[playerPosX - 1, playerPosY] != -1)
         {
             playerPosX--;
+            step -= map[playerPosX , playerPosY];//更新能量
         }
     }
 
@@ -533,6 +661,7 @@ public class GameControl : MonoBehaviour
         if (playerPosX < MapWidth && map[playerPosX + 1, playerPosY] != -1)
         {
             playerPosX++;
+            step -= map[playerPosX, playerPosY];
         }
     }
 
@@ -541,6 +670,7 @@ public class GameControl : MonoBehaviour
         if (playerPosY < MapHeight && map[playerPosX, playerPosY + 1] != -1)
         {
             playerPosY++;
+            step -= map[playerPosX, playerPosY ];
         }
     }
 
@@ -549,6 +679,7 @@ public class GameControl : MonoBehaviour
         if (playerPosY > 0 && map[playerPosX, playerPosY - 1] != -1)
         {
             playerPosY--;
+            step -= map[playerPosX, playerPosY ];
         }
     }
 

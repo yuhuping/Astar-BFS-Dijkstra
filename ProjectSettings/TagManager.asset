@@ -8,6 +8,10 @@ TagManager:
   - textObj
   - step
   - NeedStep
+  - Level
+  - EndPrefab
+  - Manager
+  - MoveSpeed
   layers:
   - Default
   - TransparentFX
