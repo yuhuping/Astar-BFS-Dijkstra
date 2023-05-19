@@ -16,30 +16,40 @@ public class PlayerControl : MonoBehaviour
     // 在 Update 方法中检测玩家输入并调用 GameManager 中对应的移动函数
     private void Update()
     {
-        checkMove();
+        // 更新玩家位置
+        this.transform.position = new Vector3(gameManager.playerPosX, gameManager.playerPosY, -3);
+        if (!gameManager.AIIsOn)
+            checkMove(); 
         
     }
 
     private void checkMove()
     {
-        if (Input.GetKeyDown(KeyCode.LeftArrow))
-        {
-            gameManager.MoveToLeft();
-        }
-        else if (Input.GetKeyDown(KeyCode.RightArrow))
-        {
-            gameManager.MoveToRight();
-        }
-        else if (Input.GetKeyDown(KeyCode.UpArrow))
-        {
-            gameManager.MoveToUp();
-        }
-        else if (Input.GetKeyDown(KeyCode.DownArrow))
-        {
-            gameManager.MoveToDown();
-        }
+        //if (gameManager.AIIsOn) 
+        //{
+        //    if (Input.anyKeyDown)
+        //    {
+        //        gameManager.AIIsOn = false;
+        //    }
+        //}
 
-        // 更新玩家位置
-        this.transform.position = new Vector3(gameManager.playerPosX, gameManager.playerPosY,-3);
+        //else
+        //{
+            if (Input.GetKeyDown(KeyCode.LeftArrow))
+            {
+                gameManager.MoveToLeft();
+            }
+            else if (Input.GetKeyDown(KeyCode.RightArrow))
+            {
+                gameManager.MoveToRight();
+            }
+            else if (Input.GetKeyDown(KeyCode.UpArrow))
+            {
+                gameManager.MoveToUp();
+            }
+            else if (Input.GetKeyDown(KeyCode.DownArrow))
+            {
+                gameManager.MoveToDown();
+            }
     }
 }

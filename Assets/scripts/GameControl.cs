@@ -15,6 +15,7 @@ public class GameControl : MonoBehaviour
     [Header("information")]
     public int level = 1;
     public int step = 90;
+    public bool AIIsOn;
 
     public int[,] map = new int[20, 20];  // 存放每个位置信息，0表示正常路径，-1表示障碍物，2表示宝箱
     public int playerPosX = 0;  // 玩家当前位置横坐标
@@ -45,14 +46,14 @@ public class GameControl : MonoBehaviour
 
     private bool Search_IsOn;
     private bool tips_IsOn;
-
+    
     private bool MapFalse;//判断障碍物是否包围了终点
     public GameObject[,] BlockPrefab;//记录文字块
     private GameObject[] barrierPrefabs;//记录障碍物
     private GameObject[] tipPrefabs;//记录障碍物
 
     [Header("AI-information")]
-    public float moveInterval ; // 移动间隔时间
+    public float moveInterval=1f ; // 移动间隔时间
     public int currentIndex; // 当前路径点的索引
 
     private void Awake()
@@ -74,10 +75,22 @@ public class GameControl : MonoBehaviour
         // ...
 
     }
+
     void Update()
     {
         DataUpdate();//更新数据信息
+    }
+
+    void FixedUpdate()
+    {
+        
         Checkout();//更新关卡信息、判断游戏是否结束
+        if (Input.anyKeyDown)
+        {
+            AIIsOn = false;
+            StopAllCoroutines();
+        }
+        
     }
 
     private void DataUpdate()
@@ -190,12 +203,12 @@ public class GameControl : MonoBehaviour
         endObj.transform.SetParent(transform);
 
         CreateMap();//生成障碍物
-        while (MapFalse)
-        {
-            MapFalse=false;
+        //while (MapFalse)
+        //{
+        //    MapFalse=false;
 
-            CreateMap();
-        }
+        //    CreateMap();
+        //}
 
         // 初始化玩家位置
         playerPosX = startPosX;
@@ -351,7 +364,7 @@ public class GameControl : MonoBehaviour
     int GetDistance(Vector2Int pos1, Vector2Int pos2)
     {
         //return 1; // 相邻两个位置距离为1
-        return map[pos2.x,pos2.y]; // 更改路径消耗
+        return map[pos2.x,pos2.y]; // 更改为路径消耗
     }
 
     // 判断位置是否在地图范围内
@@ -607,17 +620,22 @@ public class GameControl : MonoBehaviour
 
     }
 
-    public void AI_go()//将BFS得到的路径全部权值加大
+    public void AI_go()//AI自动移动
     {
-        Slider moveSpeedSlider = GameObject.FindGameObjectWithTag("MoveSpeed").GetComponent<Slider>();
-        // 获取Slider的Value值
-        moveInterval = moveSpeedSlider.value*2f+0.2f;
-
-        currentIndex = 0;
-        resultpath = Search_Dijkstra(playerPosX, playerPosY, endPosX, endPosY);
-        ShowPath(resultpath);
-        StartCoroutine(MovePlayer());
-        
+        if (AIIsOn)
+        {
+            AIIsOn = false;
+            StopAllCoroutines();
+        }
+        else
+        {
+            AIIsOn = true;
+            moveInterval = 0.5f;
+            currentIndex = 0;
+            resultpath = Search_Dijkstra(playerPosX, playerPosY, endPosX, endPosY);
+            ShowPath(resultpath);
+            StartCoroutine(MovePlayer());
+        }   
     }
     IEnumerator MovePlayer()
     {
